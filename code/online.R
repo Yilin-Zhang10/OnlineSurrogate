@@ -5,24 +5,31 @@ library(dplyr)
 library(ggplot2)
 library(reshape2)
 library(e1071)
+library(ggpubr)
 
-f_dir <- "C:/Users/yzhang/Desktop/appliedstat/online/Demo/CrashSample/"
-setwd(f_dir)
-data_crash <- ldply(list.files(f_dir), read.csv, header=TRUE)
+
+#=============== import data ===============#
+dir_crash <- "C:/Users/yzhang/Desktop/appliedstat/OnlineSurrogate/data/segment/crash/"
+setwd(dir_crash)
+f_crash <- list.files(dir_crash)
+data_crash <- ldply(f_crash[1:6], read.csv, header=TRUE)
 data_crash <- mutate(data_crash, crash = 1)
 
-f_dir <- "C:/Users/yzhang/Desktop/appliedstat/online/Demo/Base/"
-setwd(f_dir)
-data_non <- ldply(list.files(f_dir), read.csv, header=TRUE)
-data_non <- mutate(data_non, crash = 0)
 
-dataset <- bind_rows(data_non, data_crash)
+dir_base <- "C:/Users/yzhang/Desktop/appliedstat/OnlineSurrogate/data/segment/base/"
+setwd(dir_base)
+f_base <- list.files(dir_base)
+data_base <- ldply(f_base[1:6], read.csv, header=TRUE)
+data_base <- mutate(data_base, crash = 0)
+
+dataset <- bind_rows(data_base, data_crash)
 
 
-## Some Driving Behaviors
+#=============== basic description for segments ===============#
 
 
-temp <- data_non %>% select(file_id, X, accel_x, accel_y, accel_z)
+# figure for baseline segments
+temp <- data_base %>% select(file_id, X, accel_x, accel_y, accel_z)
 temp <- melt(temp, id.vars = c("file_id", "X"))
 
 
@@ -30,35 +37,61 @@ temp %>%
   ggplot(aes(x=X, y=value, group=variable, color=variable)) +
   geom_line(size=0.7) +
   facet_wrap("file_id")+
-  ggtitle("Acceleration for non-crash data") + theme_minimal()+
-  theme(plot.title = element_text(size = 15, hjust = 0.5))
+  ggtitle("Acceleration for baseline segments") + theme_minimal()+
+  theme(plot.title = element_text(size = 15, hjust = 0.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank())
 
 
+# figure for crash segments
 temp <- data_crash %>% select(file_id, X, accel_x, accel_y, accel_z)
 temp <- melt(temp, id.vars = c("file_id", "X"))
-
 
 temp %>%
   ggplot(aes(x=X, y=value, group=variable, color=variable)) +
     geom_line(size=0.7) +
     facet_wrap("file_id")+
-    ggtitle("Acceleration for crash data") + theme_minimal()+
-    theme(plot.title = element_text(size = 15, hjust = 0.5))
+    ggtitle("Acceleration for crash segments") + theme_minimal()+
+    theme(plot.title = element_text(size = 15, hjust = 0.5),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank())
 
 
-
+# figure for crash segment 63772054
 temp <- data_crash %>% 
-  filter(file_id == "14219686") %>%
-  select(X, accel_x, accel_y, accel_z, speed_gps) %>%
-  mutate(speed_gps = speed_gps/10)
+  filter(file_id == "63772054") %>%
+  select(X, accel_x, accel_y, accel_z)
 temp <- melt(temp, id.vars = c("X"))
+
 
 temp %>%
   ggplot(aes(x=X, y=value, group=variable, color=variable)) +
-  geom_line(size=0.7) +
-  ggtitle("Acceleration and speed for crash one") + theme_minimal()+
-  theme(plot.title = element_text(size = 15, hjust = 0.5))
+  geom_line(size=1.0) +
+  ggtitle("Acceleration for crash segment 63772054") + theme_minimal() +
+  theme(plot.title = element_text(size = 15, hjust = 0.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank())
 
+
+
+# figure for crash segment 37159529
+temp <- data_crash %>% 
+  filter(file_id == "37159529") %>%
+  select(X, accel_x, accel_y, accel_z)
+temp <- melt(temp, id.vars = c("X"))
+
+
+temp %>%
+  ggplot(aes(x=X, y=value, group=variable, color=variable)) +
+  geom_line(size=1.0) +
+  ggtitle("Acceleration for crash segment 37159529") + theme_minimal() +
+  theme(plot.title = element_text(size = 15, hjust = 0.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank())
+
+
+
+#=============== basic description for trips ===============#
 
 
 f_dir <- "C:/Users/yzhang/Desktop/appliedstat/online/select/crash"
