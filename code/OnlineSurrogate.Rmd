@@ -1,0 +1,322 @@
+---
+title: "Online Estimation of Surrogate Measures and itsApplication to Transportation Safety Analysis"
+author: "Yilin Zhang"
+date: "2021/3/23"
+output:
+  prettydoc::html_pretty:
+    theme: architect 
+    highlight: github
+---
+
+
+## Background
+
+### Data Source:
+
+Traffic crashes are rare events, with an average rate of one crash 6.8 per million vehicle miles traveled in the US. The **naturalistic driving study (NDS)** provides an unprecedented opportunity to  evaluate crash risk. NDSs are characterized by  continuously recording driving information, such as three-dimensional Inertial Measurement Unit (IMU) acceleration, GPS and multi-channel video recordings[1].  
+
+- Accurately identifying crashes with robustness
+- Benefitting further understanding of driving behavior 
+- With the overall goal of reducing accidents 
+
+This experiment  uses the **Second Strategic Highway Research Program (SHRP 2) NDS**, the largest NDS to-date, with more than 3,400 participants and 1 million hours of continuous driving data[2].
+
+
+
+### Surrogate Measures:
+
+To mitigate the rarity and insufficiency for traffic crash \citep{guo2010near}, a broad spectrum of studies investigate identification and development of various surrogate measures, which helps to supplement the analytical data and enhance the reliability of safety analysis.
+
+To be useful for transportation safety applications, a **surrogate measure** should[4] 
+
+- related in a predictable and reliable way to crashes
+- converting the non-crash events into a corresponding crash frequency and/or severity
+- has physical meaning
+
+Much of the empirical work is framed by detecting the jerky driving behaviors based on the **acceleration information**. The premise is the positive correlation between **elevated gravitational-force events and crash propensity**. While such an attempt is sensitive to the unstable HGF threshold and can easily generate too many false positives.
+ 
+### Aim of Our Work
+
+Our core concern is to propose surrogates based on three-dimension of acceleration.
+
+- Propose new surrogate measures with large power in detecting crash
+- Implement the surrogate measures with online version
+ 
+## Exploratory Data Analysis
+
+We first import data and combine them together.
+
+- Select 10 segments, with 5 crash ones and 5 non-crash ones. 
+- Each segments have around 300 time points.
+
+```{r message=FALSE, warning=FALSE}
+library(e1071)
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(gridExtra)
+```
+
+
+```{r}
+f_dir <- "C:/Users/yzhang/Desktop/appliedstat/online/Demo5/CrashSample/"
+setwd(f_dir)
+data_crash <- ldply(list.files(f_dir), read.csv, header=TRUE)
+data_crash <- mutate(data_crash, crash = 1)
+str(data_crash)
+```
+
+```{r}
+f_dir <- "C:/Users/yzhang/Desktop/appliedstat/online/Demo5/Base/"
+setwd(f_dir)
+data_non <- ldply(list.files(f_dir), read.csv, header=TRUE)
+data_non <- mutate(data_non, crash = 0)
+str(data_non)
+```
+
+```{r}
+dataset <- bind_rows(data_non, data_crash)
+```
+
+
+### Some Driving Behaviors
+
+
+```{r}
+temp <- data_non %>% select(file_id, X, accel_x, accel_y, accel_z)
+temp <- melt(temp, id.vars = c("file_id", "X"))
+
+
+temp %>%
+  ggplot(aes(x=X, y=value, group=variable, color=variable)) +
+  geom_line(size=0.7) +
+  facet_wrap("file_id")+
+  ggtitle("Acceleration for non-crash data") + theme_minimal()+
+  theme(plot.title = element_text(size = 15, hjust = 0.5))
+
+```
+
+
+```{r message=FALSE, warning=FALSE}
+temp <- data_crash %>% select(file_id, X, accel_x, accel_y, accel_z)
+temp <- melt(temp, id.vars = c("file_id", "X"))
+
+
+temp %>%
+  ggplot(aes(x=X, y=value, group=variable, color=variable)) +
+    geom_line(size=0.7) +
+    facet_wrap("file_id")+
+    ggtitle("Acceleration for crash data") + theme_minimal()+
+    theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+
+Here, we give focus on some crash samples.
+
+```{r message=FALSE, warning=FALSE}
+temp <- data_crash %>% 
+  filter(file_id == "14219686") %>%
+  select(X, accel_x, accel_y, accel_z, speed_gps) %>%
+  mutate(speed_gps = speed_gps/40)
+temp <- melt(temp, id.vars = c("X"))
+
+temp %>%
+  ggplot(aes(x=X, y=value, group=variable, color=variable)) +
+  geom_line(size=0.7) +
+  ggtitle("Acceleration and speed for 14219686") + theme_minimal()+
+  theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+Mild crash:
+
+- Slam on the brakes and slow down to stop   
+ 
+
+```{r message=FALSE, warning=FALSE}
+temp <- data_crash %>% 
+  filter(file_id == "32198975") %>%
+  select(X, accel_x, accel_y, accel_z, speed_gps) %>%
+  mutate(speed_gps = speed_gps/40)
+temp <- melt(temp, id.vars = c("X"))
+
+temp %>%
+  ggplot(aes(x=X, y=value, group=variable, color=variable)) +
+  geom_line(size=0.7) +
+  ggtitle("Acceleration and speed for 32198975") + theme_minimal()+
+  theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+Heavy crash:
+
+- Slam on the brakes 
+- No stop and straight collision
+- Hit the steering wheel
+
+### Crash V.S. Non-Crash
+
+
+```{r}
+f_dir <- "C:/Users/yzhang/Desktop/appliedstat/online/select/crash"
+setwd(f_dir)
+data_crash <- ldply(list.files(f_dir), read.csv, header=TRUE)
+data_crash <- mutate(data_crash, crash = 1)
+
+f_dir <- "C:/Users/yzhang/Desktop/appliedstat/online/select/baseline/"
+setwd(f_dir)
+data_non <- ldply(list.files(f_dir), read.csv, header=TRUE)
+data_non <- mutate(data_non, crash = 0)
+
+dataset <- bind_rows(data_non, data_crash)
+str(dataset)
+```
+
+
+We plot the density for crash and non-crash data in three dimension and find
+
+- the rare event account for a small part but with extreme value
+- hard to distinguish crash and non-crash only from extreme value
+
+```{r message=FALSE}
+temp <- dataset %>% 
+  select(crash, accel_x, accel_y, accel_z)
+log_d1 <- function(x){
+  return(log(abs(x)+1)*sign(x))
+}
+log_d2 <- function(x){
+  return(log(abs(x+1)+1)*sign(x)-1)
+}
+temp["accel_x"] <- lapply(temp["accel_x"], log_d1)
+temp["accel_y"] <- lapply(temp["accel_y"], log_d1)
+temp["accel_z"] <- lapply(temp["accel_z"], log_d2)
+temp <- melt(temp, id.vars = c("crash"))
+temp$crash <- factor(temp$crash)
+ggplot(temp, aes(x=variable, y=value, fill=crash)) +
+  geom_violin()+
+  ggtitle("Acceleration density in three-dimension") + theme_minimal()+
+  theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+
+We consider a new surrogate, **standard deviation of acceleration**.
+```{r message=FALSE}
+temp <- dataset %>% 
+  select(crash, file_id, accel_x, accel_y, accel_z) %>%
+  group_by(crash, file_id) %>%
+  summarise(
+    ac_std_x = sd(accel_x),
+    ac_std_y = sd(accel_y),
+    ac_std_z = sd(accel_z)
+  )%>% 
+  select(crash, ac_std_x, ac_std_y, ac_std_z) %>%
+  melt(id.vars = c("crash"))
+temp$crash <- factor(temp$crash)
+p1 <- ggplot(temp, aes(x=variable, y=value, fill=crash)) +
+  geom_violin()+
+  ggtitle("Standard deviation") +     
+  theme_minimal()+
+  theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+
+And a new surrogate, **skewness of acceleration**.
+```{r message=FALSE}
+temp <- dataset %>% 
+  select(crash, file_id, accel_x, accel_y, accel_z) %>%
+  group_by(crash, file_id) %>%
+  summarise(
+    ac_ske_x = skewness(accel_x, type = 1),
+    ac_ske_y = skewness(accel_y, type = 1),
+    ac_ske_z = skewness(accel_z, type = 1)
+  )%>% 
+  select(crash, ac_ske_x, ac_ske_y, ac_ske_z) %>%
+  melt(id.vars = c("crash"))
+temp$crash <- factor(temp$crash)
+p2 <- ggplot(temp, aes(x=variable, y=value, fill=crash)) +
+  geom_violin() +
+  ggtitle("Skewness") + 
+  theme_minimal()+
+  theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+And a new surrogate, **skewness of acceleration**.
+```{r message=FALSE}
+temp <- dataset %>% 
+  select(crash, file_id, accel_x, accel_y, accel_z) %>%
+  group_by(crash, file_id) %>%
+  summarise(
+    ac_kur_x = kurtosis(accel_x, type = 1),
+    ac_kur_y = kurtosis(accel_y, type = 1),
+    ac_kur_z = kurtosis(accel_z, type = 1)
+  )%>% 
+  select(crash, ac_kur_x, ac_kur_y, ac_kur_z) %>%
+  melt(id.vars = c("crash"))
+temp$crash <- factor(temp$crash)
+p2 <- ggplot(temp, aes(x=variable, y=value, fill=crash)) +
+  geom_violin() +
+  ggtitle("Skewness") + 
+  theme_minimal()+
+  theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+```{r}
+l <- list(p1, p2)
+grid.arrange(grobs = l, ncol = 2)
+```
+
+
+From the figures above, standard deviation or skewness can be better surrogates.
+
+## Future Work on Model
+
+Our core concern is to propose surrogates based on three-dimension of acceleration.
+
+### New surrogate measures 
+We are going to propose new surrogate measures that
+
+- has large power in detecting crash 
+- has low false positives
+
+The potential surrogates may be
+
+- standard deviation of acceleration
+- skewness of acceleration
+- kurtosis of acceleration
+
+We use a simple model "Single Index model", to convert the surrogates to the probability of crash.
+$$f(t) = g(\beta^{T}t)+\epsilon$$
+
+### Implement surrogates with online version
+
+Considering that all the surrogates we proposed, can be estimated using U statistics or function of U statistics. Thus, we derive a general frame work for online U statistics.
+
+
+- In the first step, we calculate the U statistics based on all initial data, which is 
+$$\hat\theta^{(0)} = (C_{n}^{m})^{-1}\sum_{ \{i_1,\ldots,i_m\}\in I_0} h(X_{i_1},\ldots,h_{i_m}).$$
+
+- To refresh the U statistics in time $t$, we use the following iterative formula. 
+$$R^{(t)} = \sum\limits_{\{i_1,\ldots,i_m\}\in I_t}h(X_{i_1},\ldots,X_{i_m}) , $$
+$$C^{(t)} = \sum_{k=1}^{m-1}\sum\limits_{\{i_1,\ldots,i_k\}\in J_{t-1}, \{i_{k+1},\ldots,i_m\}\in I_{t}}h(X_{i_1},\ldots,X_{i_m})$$    
+
+$$\hat\theta^{(t)} = \left\{(t+1)C_n^m-tC_r^m\right\}^{-1}\left[\left\{tC_n^m-(t-1)C_r^m\right\}\hat\theta^{(t-1)} + C^{(t)} + R^{(t)}\right]$$
+                                            
+- By transforming $\hat\theta^{(t)}$ as $T(\hat\theta^{(t)})$, we derive the new estimates for $T(\theta)$.
+
+
+
+
+
+
+
+## Reference
+
+[1] Feng Guo. Statistical methods for naturalistic driving studies. Annual review of statisticsand its application, 6:309–328, 2019.
+
+[2]  Thomas  A  Dingus,  Feng  Guo,  Suzie  Lee,  Jonathan  F  Antin,  Miguel  Perez,  MindyBuchanan-King, and Jonathan Hankey. Driver crash risk factors and prevalence evalu-ation using naturalistic driving data. Proceedings of the National Academy of Sciences,113(10):2636–2641, 2016.
+
+[3] Feng Guo, Sheila G Klauer, Jonathan M Hankey, and Thomas A Dingus.  Near crashesas  crash  surrogate  for  naturalistic  driving  studies. Transportation  Research  Record,2147(1):66–74, 2010.
+
+[4]  Andrew P Tarko.  Surrogate measures of safety.  InSafe Mobility:  Challenges, Method-ology and Solutions. Emerald Publishing Limited, 2018.
+
+
+
