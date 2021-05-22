@@ -84,8 +84,7 @@ dataset <- bind_rows(data_base, data_crash)
 
 ## 2.1 Basic description for driving segments
 
-
-```{r}
+```{r message=FALSE, warning=FALSE}
 # figure for baseline segments
 temp <- data_base %>% select(file_id, X, accel_x, accel_y, accel_z)
 temp <- melt(temp, id.vars = c("file_id", "X"))
@@ -254,7 +253,7 @@ p
 
 
 We consider a new surrogate, **standard deviation of acceleration**.
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
 # figure for standard deviation
 temp <- dataset %>% 
   select(crash, file_id, accel_x, accel_y, accel_z) %>%
@@ -279,7 +278,7 @@ p1 <- ggplot(temp, aes(x=variable, y=value, fill=crash)) +
 
 
 And a new surrogate, **Coefficient of variation**.
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
 
 temp <- dataset %>% 
   select(crash, file_id, accel_x, accel_y, accel_z) %>%
@@ -307,7 +306,7 @@ p2 <- ggplot(temp, aes(x=variable, y=value, fill=crash)) +
 
 
 And a new surrogate, **skewness**.
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
 temp <- dataset %>% 
   select(crash, file_id, accel_x, accel_y, accel_z) %>%
   group_by(crash, file_id) %>%
@@ -330,7 +329,7 @@ p3 <- ggplot(temp, aes(x=variable, y=value, fill=crash)) +
 
 
 The surrogate **Maximum**, proposed previously.
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
 temp <- dataset %>% 
   select(crash, file_id, accel_x, accel_y, accel_z) %>%
   group_by(crash, file_id) %>%
@@ -352,7 +351,7 @@ p4 <- ggplot(temp, aes(x=variable, y=value, fill=crash)) +
 ```
 
 
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
 l <- list(p1, p2, p3, p4)
 grid.arrange(grobs = l, ncol = 2)
 ```
@@ -366,8 +365,7 @@ From the figures above, standard deviation or skewness can be better surrogates.
 Our core concern is to propose surrogates based on three-dimension of acceleration.
 
 
-```{r message=FALSE}
-
+```{r message=FALSE, warning=FALSE}
 # acquire train and test data
 train_data <- dataset %>% 
   group_by(crash, file_id) %>%
@@ -405,7 +403,7 @@ train_data$crash <- factor(train_data$crash)
 
 1. Logistic Model
 
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
 
 # logistic regression
 logit.sur <- glm(crash ~ ac_std_x + ac_std_y + ac_cv_x + ac_cv_y+ ac_ske_x + ac_ske_y, 
@@ -431,8 +429,7 @@ g.logit <- ggroc(roclist, aes = "linetype", legacy.axes = TRUE) +
 
 2. Generalized addictive model
 
-```{r message=FALSE}
-
+```{r message=FALSE, warning=FALSE}
 gam.sur <- gam(crash ~ s(ac_std_x) + s(ac_std_y) + s(ac_cv_x) + 
                  s(ac_cv_y) + s(ac_ske_x) + s(ac_ske_y), 
                  data = train_data, family = binomial())
@@ -460,7 +457,7 @@ g.gam <- ggroc(roclist, aes = "linetype", legacy.axes = TRUE) +
 
 3. Support vector machine
 
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
 
 temp_train_sur <- train_data %>% dplyr::select(crash, ac_std_x, ac_std_y, ac_cv_x, ac_cv_y,
                                      ac_ske_x, ac_ske_y)
@@ -495,7 +492,8 @@ g.svm <- ggroc(roclist, aes = "linetype", legacy.axes = TRUE) +
 
 4. Gradient boosting decision tree
 
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
+
 temp_train_sur <- train_data %>% dplyr::select(crash, ac_std_x, ac_std_y, ac_cv_x, ac_cv_y,
                                                ac_ske_x, ac_ske_y)
 temp_train_max <- train_data %>% dplyr::select(crash, ac_max_x, ac_max_y)
@@ -538,7 +536,8 @@ grid.arrange(g.logit, g.gam, g.svm, g.gbdt, ncol = 2)
 
 
 
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
+
 # AOC curve for our surrogates with different models
 roclist <- list("Logit" = roc.logit.sur, "GAM" = roc.gam.sur,
                 "SVM" = roc.svm.sur, "GBDT" = roc.gbdt.sur)
@@ -593,22 +592,7 @@ $$\hat\theta^{(t)} = \left\{(t+1)C_n^m-tC_r^m\right\}^{-1}\left[\left\{tC_n^m-(t
 
 
 
-
-```{r message=FALSE}
-
-
-```
-
-
-
-```{r message=FALSE}
-
-
-```
-
-
-
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
 online_std <- function(x, r, n){
   N <- length(x)
   u <- c()
@@ -680,7 +664,7 @@ online_cv <- function(x, r, n){
 ```
 
 
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
 online_skew <- function(x, r, n){
   N <- length(x)
   u1 <- c()
@@ -727,7 +711,7 @@ online_skew <- function(x, r, n){
 ```
 
 
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
 
 dir_crash <- "C:/Users/yzhang/Desktop/appliedstat/OnlineSurrogate/data/trip/crash/"
 setwd(dir_crash)
@@ -787,7 +771,7 @@ grid.arrange(p1, p2, p3, p4, ncol = 1)
 
 
 
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
 
 y_std <- online_std(trip_crash$accel_y, 40, 100)
 y_cv <- online_cv(trip_crash$accel_y, 40, 100)
@@ -838,8 +822,7 @@ grid.arrange(p1, p2, p3, p4, ncol = 1)
 
 
 
-```{r message=FALSE}
-
+```{r message=FALSE, warning=FALSE}
 # crash sample risk prediction
 dir_crash <- "C:/Users/yzhang/Desktop/appliedstat/OnlineSurrogate/data/trip/crash/"
 setwd(dir_crash)
@@ -893,7 +876,7 @@ grid.arrange(p1, p2, p3, ncol = 1)
 
 
 
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
 # base sample risk prediction
 dir_base <- "C:/Users/yzhang/Desktop/appliedstat/OnlineSurrogate/data/trip/base/"
 setwd(dir_base)
