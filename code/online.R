@@ -7,6 +7,11 @@ library(reshape2)
 library(e1071)
 library(ggridges)
 library(gridExtra)
+#library(verification)
+library(pROC)
+library(mgcv)
+library(gbm)
+
 
 #=============== import segment data ===============#
 dir_crash <- "C:/Users/yzhang/Desktop/appliedstat/OnlineSurrogate/data/segment/crash/"
@@ -106,6 +111,22 @@ data_base <- ldply(f_base, read.csv, header=TRUE)
 data_base <- mutate(data_base, crash = 0)
 
 dataset <- bind_rows(data_base, data_crash)
+
+#=============== import all trip data ===============#
+dir_crash <- "C:/Users/yzhang/Desktop/appliedstat/OnlineSurrogate/data/trip/crash/"
+setwd(dir_crash)
+f_crash <- list.files(dir_crash)
+trip_crash <- ldply(f_crash, read.csv, header=TRUE)
+trip_crash <- mutate(trip_crash, crash = 1)
+
+
+dir_base <- "C:/Users/yzhang/Desktop/appliedstat/OnlineSurrogate/data/trip/base/"
+setwd(dir_base)
+f_base <- list.files(dir_base)
+trip_base <- ldply(f_base, read.csv, header=TRUE)
+trip_base <- mutate(trip_base, crash = 0)
+
+tripset <- bind_rows(trip_base, trip_crash)
 
 
 
@@ -236,20 +257,160 @@ ggplot(temp, aes(x=variable, y=value, fill=crash)) +
 
 #=============== Model training ===============#
 
+train_data <- dataset %>% 
+  group_by(crash, file_id) %>%
+  summarise(
+    ac_std_x = sd(accel_x),
+    ac_std_y = sd(accel_y),
+    ac_cv_x = sd(accel_x)/(mean(accel_x)),
+    ac_cv_y = sd(accel_y)/(mean(accel_y)),
+    ac_ske_x = skewness(accel_x, type = 1),
+    ac_ske_y = skewness(accel_y, type = 1),
+    ac_max_x = max(accel_x),
+    ac_max_y = max(accel_y)
+  )
+
+
+test_data <- tripset %>% 
+  group_by(crash, file_id) %>%
+  summarise(
+    ac_std_x = sd(accel_x),
+    ac_std_y = sd(accel_y),
+    ac_cv_x = sd(accel_x)/(mean(accel_x)),
+    ac_cv_y = sd(accel_y)/(mean(accel_y)),
+    ac_ske_x = skewness(accel_x, type = 1),
+    ac_ske_y = skewness(accel_y, type = 1),
+    ac_max_x = max(accel_x),
+    ac_max_y = max(accel_y)
+  )
+
+train_data$crash <- factor(train_data$crash)
+
 
 # logistic regression
+logit.sur <- glm(crash ~ ac_std_x + ac_std_y + ac_cv_x + ac_cv_y+ ac_ske_x + ac_ske_y, 
+                 data = train_data, family = "binomial")
+logit.max <- glm(crash ~ ac_max_x + ac_max_y,
+                 data = train_data, family = "binomial")
+test_data$p.sur <- predict(logit.sur, newdata = test_data, type = "response")
+test_data$p.max <- predict(logit.max, newdata = test_data, type = "response")
+
+
+roc.logit.sur <- roc(test_data$crash, test_data$p.sur)
+roc.logit.max <- roc(test_data$crash, test_data$p.max)
+roclist <- list("Ours" = roc.logit.sur, "Max" = roc.logit.max)
+g.logit <- ggroc(roclist, aes = "linetype", legacy.axes = TRUE) +
+  geom_abline() +
+  theme_classic() +
+  ggtitle("AOC curve for Logistic regression") +
+  theme(plot.title = element_text(size = 10, hjust = 0.5)) +
+  labs(x = "1-Specificity",
+       y = "Sensitivity")
+
 
 # GAM
+gam.sur <- gam(crash ~ s(ac_std_x) + s(ac_std_y) + s(ac_cv_x) + 
+                 s(ac_cv_y) + s(ac_ske_x) + s(ac_ske_y), 
+                 data = train_data, family = binomial())
+
+gam.max <- gam(crash ~ s(ac_max_x) + s(ac_max_y),
+                 data = train_data, family = binomial())
+
+test_data$p.sur <- predict(gam.sur, newdata = test_data, type = "response")
+test_data$p.max <- predict(gam.max, newdata = test_data, type = "response")
+
+roc.gam.sur = roc(test_data$crash, test_data$p.sur)
+roc.gam.max = roc(test_data$crash, test_data$p.max)
+
+roclist <- list("Ours" = roc.gam.sur, "Max" = roc.gam.max)
+g.gam <- ggroc(roclist, aes = "linetype", legacy.axes = TRUE) +
+  geom_abline() +
+  theme_classic() +
+  ggtitle("AOC curve for generilzed addictive model") +
+  theme(plot.title = element_text(size = 10, hjust = 0.5)) +
+  labs(x = "1-Specificity",
+       y = "Sensitivity")
+
+
+# svm
+temp_train_sur <- train_data %>% dplyr::select(crash, ac_std_x, ac_std_y, ac_cv_x, ac_cv_y,
+                                     ac_ske_x, ac_ske_y)
+temp_train_max <- train_data %>% dplyr::select(crash, ac_max_x, ac_max_y)
+temp_test_sur <- test_data %>% dplyr::select(crash, ac_std_x, ac_std_y, ac_cv_x, ac_cv_y,
+                                             ac_ske_x, ac_ske_y)
+temp_test_max <- test_data %>% dplyr::select(crash, ac_max_x, ac_max_y)
+
+
+svm.sur <- svm(crash ~ ., data = temp_train_sur, 
+               kernel = "radial", cost = 20)
+svm.max <- svm(crash ~ ., data = temp_train_max, 
+               kernel = "radial", cost = 20)
+
+
+test_data$p.sur <- as.integer(predict(svm.sur, newdata = temp_test_sur))-1
+test_data$p.max <- as.integer(predict(svm.max, newdata = temp_test_max))-1
+
+roc.svm.sur <- roc(test_data$crash, test_data$p.sur)
+roc.svm.max <- roc(test_data$crash, test_data$p.max)
+
+roclist <- list("Ours" = roc.svm.sur, "Max" = roc.svm.max)
+g.svm <- ggroc(roclist, aes = "linetype", legacy.axes = TRUE) +
+  geom_abline() +
+  theme_classic() +
+  ggtitle("AOC curve for support vector machine") +
+  theme(plot.title = element_text(size = 10, hjust = 0.5)) +
+  labs(x = "1-Specificity",
+       y = "Sensitivity")
+
 
 # gbdt
+temp_train_sur <- train_data %>% dplyr::select(crash, ac_std_x, ac_std_y, ac_cv_x, ac_cv_y,
+                                               ac_ske_x, ac_ske_y)
+temp_train_max <- train_data %>% dplyr::select(crash, ac_max_x, ac_max_y)
+temp_test_sur <- test_data %>% dplyr::select(crash, ac_std_x, ac_std_y, ac_cv_x, ac_cv_y,
+                                             ac_ske_x, ac_ske_y)
+temp_test_max <- test_data %>% dplyr::select(crash, ac_max_x, ac_max_y)
+temp_train_sur <- na.omit(temp_train_sur)
+temp_train_sur$crash <- as.integer(temp_train_sur$crash)-1
+temp_train_max <- na.omit(temp_train_max)
+temp_train_max$crash <- as.integer(temp_train_max$crash)-1
 
-# dnn
+gbdt.sur <- gbm(crash ~ ., data = temp_train_sur,  
+                shrinkage=0.01, distribution = 'bernoulli')
+gbdt.max <- gbm(crash ~ ., data = temp_train_max,  
+                shrinkage=0.01, distribution = 'bernoulli')
 
-#=============== Model testing ===============#
+
+test_data$p.sur <- predict(gbdt.sur, temp_test_sur, na.action = na.pass)
+test_data$p.max <- predict(gbdt.max, newdata = temp_test_max)
+
+roc.gbdt.sur <- roc(test_data$crash, test_data$p.sur)
+roc.gbdt.max <- roc(test_data$crash, test_data$p.max)
+
+roclist <- list("Ours" = roc.gbdt.sur, "Max" = roc.gbdt.max)
+g.gbdt <- ggroc(roclist, aes = "linetype", legacy.axes = TRUE) +
+  geom_abline() +
+  theme_classic() +
+  theme(plot.title = element_text(size = 10, hjust = 0.5)) +
+  ggtitle("AOC curve for gradient boosting tree") +
+  labs(x = "1-Specificity",
+       y = "Sensitivity")
+
+
+grid.arrange(g.logit, g.gam, g.svm, g.gbdt, ncol = 2)
 
 
 
-
+roclist <- list("Logit" = roc.logit.sur, "GAM" = roc.gam.sur,
+                "SVM" = roc.svm.sur, "GBDT" = roc.gbdt.sur)
+g.compare <- ggroc(roclist, aes = "linetype", legacy.axes = TRUE) +
+  geom_abline() +
+  theme_classic() +
+  ggtitle("AOC curve for 4 models") +
+  theme(plot.title = element_text(size = 15, hjust = 0.5)) +
+  labs(x = "1-Specificity",
+       y = "Sensitivity")
+g.compare
 
 #=============== Online surrogates ===============#
 
@@ -491,7 +652,98 @@ grid.arrange(p1, p2, p3, p4, ncol = 1)
 
 #=============== Risk prediction for trip===============#
 
+# crash sample risk prediction
+dir_crash <- "C:/Users/yzhang/Desktop/appliedstat/OnlineSurrogate/data/trip/crash/"
+setwd(dir_crash)
+f_crash <- list.files(dir_crash)
+trip_crash <- ldply(f_crash[17], read.csv, header=TRUE)
+
+
+ac_std_x <- online_std(trip_crash$accel_x, 40, 100)
+ac_std_y <- online_std(trip_crash$accel_y, 40, 100)
+ac_cv_x <- online_cv(trip_crash$accel_x, 40, 100)
+ac_cv_y <- online_cv(trip_crash$accel_y, 40, 100)
+ac_ske_x <- online_skew(trip_crash$accel_x, 40, 100)
+ac_ske_y <- online_skew(trip_crash$accel_y, 40, 100)
+t <- c(0:(length(ac_std_x)-1))*40+100
+temp <- data.frame(t, ac_std_x, ac_std_y, 
+                   ac_cv_x, ac_cv_y, ac_ske_x, ac_ske_y)
+
+temp$risk <- predict(gam.sur, newdata = temp, type = "response")
 
 
 
+p1 <- trip_crash %>%
+  ggplot(aes(x=t, y=accel_y)) +
+  geom_line(size=0.7) + 
+  ggtitle("Lateral acceleration of crash sample") + theme_classic()+
+  theme(plot.title = element_text(size = 10, hjust = 0.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank())
+
+p2 <- trip_crash %>%
+  ggplot(aes(x=t, y=accel_x)) +
+  geom_line(size=0.7) + 
+  ggtitle("Longitudinal acceleration of crash sample") + theme_classic()+
+  theme(plot.title = element_text(size = 10, hjust = 0.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank())
+
+p3 <- temp %>%
+  ggplot(aes(x=t, y=risk)) +
+  geom_line(size=0.7) + 
+  ggtitle("Risk prediction for crash sample") + theme_classic()+
+  theme(plot.title = element_text(size = 10, hjust = 0.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank())
+
+grid.arrange(p1, p2, p3, ncol = 1)
+
+
+# base sample risk prediction
+dir_base <- "C:/Users/yzhang/Desktop/appliedstat/OnlineSurrogate/data/trip/base/"
+setwd(dir_base)
+f_base <- list.files(dir_base)
+trip_base <- ldply(f_base[19], read.csv, header=TRUE)
+
+
+ac_std_x <- online_std(trip_base$accel_x, 40, 100)
+ac_std_y <- online_std(trip_base$accel_y, 40, 100)
+ac_cv_x <- online_cv(trip_base$accel_x, 40, 100)
+ac_cv_y <- online_cv(trip_base$accel_y, 40, 100)
+ac_ske_x <- online_skew(trip_base$accel_x, 40, 100)
+ac_ske_y <- online_skew(trip_base$accel_y, 40, 100)
+t <- c(0:(length(ac_std_x)-1))*40+100
+temp <- data.frame(t, ac_std_x, ac_std_y, 
+                   ac_cv_x, ac_cv_y, ac_ske_x, ac_ske_y)
+
+temp$risk <- predict(gam.sur, newdata = temp, type = "response")
+
+
+
+p1 <- trip_base %>%
+  ggplot(aes(x=t, y=accel_y)) +
+  geom_line(size=0.7) + 
+  ggtitle("Lateral acceleration of base sample") + theme_classic()+
+  theme(plot.title = element_text(size = 10, hjust = 0.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank())
+
+p2 <- trip_base %>%
+  ggplot(aes(x=t, y=accel_x)) +
+  geom_line(size=0.7) + 
+  ggtitle("Longitudinal acceleration of base sample") + theme_classic()+
+  theme(plot.title = element_text(size = 10, hjust = 0.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank())
+
+p3 <- temp %>%
+  ggplot(aes(x=t, y=risk)) +
+  geom_line(size=0.7) + 
+  ggtitle("Risk prediction for base sample") + theme_classic()+
+  theme(plot.title = element_text(size = 10, hjust = 0.5),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank())
+
+grid.arrange(p1, p2, p3, ncol = 1)
 
