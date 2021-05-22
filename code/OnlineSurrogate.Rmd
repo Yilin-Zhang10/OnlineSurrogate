@@ -9,9 +9,9 @@ output:
 ---
 
 
-# 1 Background
+# 1. Background
 
-## 1.1 Data Source:
+## 1.1. Data Source:
 
 Traffic crashes are rare events, with an average rate of one crash 6.8 per million vehicle miles traveled in the US. The **naturalistic driving study (NDS)** provides an unprecedented opportunity to  evaluate crash risk. NDSs are characterized by  continuously recording driving information, such as three-dimensional Inertial Measurement Unit (IMU) acceleration, GPS and multi-channel video recordings[1].  
 
@@ -39,10 +39,10 @@ Much of the empirical work is framed by detecting the jerky driving behaviors ba
 
 Our core concern is to propose surrogates based on three-dimension of acceleration.
 
-- Propose new surrogate measures with large power in detecting crash
-- Implement the surrogate measures with online version
+1. Propose new surrogate measures with large power in detecting crash
+2. Implement the surrogate measures with online version
  
-# 2 Exploratory Data Analysis
+# 2. Exploratory Data Analysis
 
 In this section, we do some exploratory data analysis. Our data includes **segments** and **trip** for both crash and baseline scenarios. We use segments as training data and trip data as testing.
 
@@ -85,7 +85,7 @@ dataset <- bind_rows(data_base, data_crash)
 ```
 
 
-## 2.1 Basic description for driving segments
+## 2.1. Basic description for driving segments
 
 For general understanding of the segments, we plot 6 segments for both crash and baseline ones. From the two figures below, we can see that,
 
@@ -174,9 +174,9 @@ p
 The above figure depicts that the driver slamming on the brakes and hitting the steering wheel.
 
 
-## 2.2 Crash V.S. baseline
+## 2.2. Crash V.S. baseline density
 
-To further explore the difference between crash and baseline samples, we  plot the density and surrogates for different two cases.
+To further explore the difference between crash and baseline samples, we  plot the density for different two cases.
 
 ```{r message=FALSE, warning=FALSE}
 
@@ -219,10 +219,6 @@ tripset <- bind_rows(trip_base, trip_crash)
 ```
 
 
-We plot the density of acceleration for crash and non-crash data in three dimension and find
-
-- the rare event account for a small part but with extreme value
-- hard to distinguish crash and non-crash only from extreme value
 
 ```{r message=FALSE}
 temp <- dataset %>% 
@@ -257,9 +253,31 @@ p
 ```
 
 
+The above density of acceleration for crash and non-crash data in three dimension and find
 
-We consider a new surrogate, **standard deviation of acceleration**.
+- the rare event account for a small part but with extreme value
+- hard to distinguish crash and non-crash only from extreme value
 
+This highly motivates us to propose new surrogates.
+
+## 2.3 New surrogates
+
+We are going to propose new surrogate measures that
+
+- has large power in detecting crash 
+- has low false positives
+
+We propose three  new surrogates to distinguish crash and baseline ones, include
+
+- standard deviation
+- coefficient of variation
+- skewness
+
+For each segments, we calculate these surrogates and depict the violin plots for these surrogates, compared with the previous proposed one.
+
+- maximum
+
+(1) The new surrogate **standard deviation**.
 ```{r message=FALSE, warning=FALSE}
 # figure for standard deviation
 temp <- dataset %>% 
@@ -284,7 +302,7 @@ p1 <- ggplot(temp, aes(x=variable, y=value, fill=crash)) +
 ```
 
 
-And a new surrogate, **Coefficient of variation**.
+(2) The new surrogate **Coefficient of variation**.
 ```{r message=FALSE, warning=FALSE}
 
 temp <- dataset %>% 
@@ -312,7 +330,7 @@ p2 <- ggplot(temp, aes(x=variable, y=value, fill=crash)) +
 ```
 
 
-And a new surrogate, **skewness**.
+(3) The a new surrogate **skewness**.
 ```{r message=FALSE, warning=FALSE}
 temp <- dataset %>% 
   select(crash, file_id, accel_x, accel_y, accel_z) %>%
@@ -335,7 +353,7 @@ p3 <- ggplot(temp, aes(x=variable, y=value, fill=crash)) +
 ```
 
 
-The surrogate **Maximum**, proposed previously.
+(4) The surrogate **Maximum**, proposed previously.
 ```{r message=FALSE, warning=FALSE}
 temp <- dataset %>% 
   select(crash, file_id, accel_x, accel_y, accel_z) %>%
@@ -364,12 +382,29 @@ grid.arrange(grobs = l, ncol = 2)
 ```
 
 
-From the figures above, standard deviation or skewness can be better surrogates.
+From the figures above, we can see that
+
+- standard deviation or skewness could be better surrogates
+- the surrogates on dimensional z may be useless.
+
+Therefore, we choose our surrogates as **standard deviation**, **variation of coefficient** and **skewness**. For each surrogate, we consider **x** and **y** dimension. Totoally, we have 6 features in prediction model.
 
 
 # 3. Formal model
 
-Our core concern is to propose surrogates based on three-dimension of acceleration.
+We choose four different models to predict the risk for crash.
+
+- Logistic regression
+- Generalized addictive model
+- Support vactor machine
+- Gradient boosting decision tree
+
+For each prediction model, we consider two sub models with different surrogates.
+
+- one is three **new surrogates** (standard deviation, coefficient of variation, skewness) based on dimension x and y
+- one is surrogates proposed previously (maximum) based on dimension x and y
+
+The training data is segment data and the testing is trip one.
 
 
 ```{r message=FALSE, warning=FALSE}
@@ -543,6 +578,10 @@ grid.arrange(g.logit, g.gam, g.svm, g.gbdt, ncol = 2)
 
 
 
+We plot AOC curves for these 4 risk prediction models each with two curves of our surrogates and maximum surrogate. From the picture above, we can see that to attain high sensitivity, our surrogates works better that the maximum in all four models.
+
+
+
 ```{r message=FALSE, warning=FALSE}
 
 # AOC curve for our surrogates with different models
@@ -559,28 +598,14 @@ g.compare
 
 ```
 
+We then plot AOC curves For 4 prediction models with our surrogates. From  the above  figure, we know that the generalized addictive model has best performance.
+
+To this end, we construct the risk prediction model use our new surrogates via generalized addictive model (GAM).
 
 
 # 4. Online surrogates and risk prediction
 
-
-## 4.1 New surrogate measures 
-
-We are going to propose new surrogate measures that
-
-- has large power in detecting crash 
-- has low false positives
-
-The potential surrogates may be
-
-- standard deviation of acceleration
-- skewness of acceleration
-- kurtosis of acceleration
-
-We use a simple model "Single Index model", to convert the surrogates to the probability of crash.
-$$f(t) = g(\beta^{T}t)+\epsilon$$
-
-### Implement surrogates with online version
+## 4.1 Implement surrogates with online version
 
 Considering that all the surrogates we proposed, can be estimated using U statistics or function of U statistics. Thus, we derive a general frame work for online U statistics.
 
@@ -589,15 +614,20 @@ Considering that all the surrogates we proposed, can be estimated using U statis
 $$\hat\theta^{(0)} = (C_{n}^{m})^{-1}\sum_{ \{i_1,\ldots,i_m\}\in I_0} h(X_{i_1},\ldots,h_{i_m}).$$
 
 - To refresh the U statistics in time $t$, we use the following iterative formula. 
+
 $$R^{(t)} = \sum\limits_{\{i_1,\ldots,i_m\}\in I_t}h(X_{i_1},\ldots,X_{i_m}) , $$
+
 $$C^{(t)} = \sum_{k=1}^{m-1}\sum\limits_{\{i_1,\ldots,i_k\}\in J_{t-1}, \{i_{k+1},\ldots,i_m\}\in I_{t}}h(X_{i_1},\ldots,X_{i_m})$$    
+
 
 $$\hat\theta^{(t)} = \left\{(t+1)C_n^m-tC_r^m\right\}^{-1}\left[\left\{tC_n^m-(t-1)C_r^m\right\}\hat\theta^{(t-1)} + C^{(t)} + R^{(t)}\right]$$
                                             
 - By transforming $\hat\theta^{(t)}$ as $T(\hat\theta^{(t)})$, we derive the new estimates for $T(\theta)$.
 
 
+## 4.2 Onlne surrogates for crash sample
 
+To examine the performance of online estimation, we depict the longitudinal and lateral online estimation for our three new surrogates. These figures indicates that our online estimation capture the features as time goes by.
 
 ```{r message=FALSE, warning=FALSE}
 online_std <- function(x, r, n){
@@ -692,12 +722,15 @@ online_skew <- function(x, r, n){
     
     R1 <- r*r/6.0*sum((x[(ss+1):(ss+r)] - mean(x[(ss+1):(ss+r)]))^3)
     temp <- (n-r)*(n-r)/6.0*sum((x[(ss-n+r+1):ss] - mean(x[(ss-n+r+1):ss]))^3)
-    C1 <- n*n/6.0*sum((x[(ss-n+r+1):(ss+r)] - mean(x[(ss-n+r+1):(ss+r)]))**3) - temp - R1   
+    C1 <- n*n/6.0*sum((x[(ss-n+r+1):(ss+r)] - mean(x[(ss-n+r+1):(ss+r)]))**3) 
+           - temp - R1   
 
 
-    u1_r <- u1_r*(n*(n-1)*(n-2)/6.0 + (t-1)*r*(r-1)*(r-2)/6.0 + (t-1)*(n-r)*(n-r-1)*r/2.0 + (t-1)*(n-r)*r*(r-1)/2.0)
+    u1_r <- u1_r*(n*(n-1)*(n-2)/6.0 + (t-1)*r*(r-1)*(r-2)/6.0 
+                  + (t-1)*(n-r)*(n-r-1)*r/2.0 + (t-1)*(n-r)*r*(r-1)/2.0)
     u1_r <- u1_r + R1 + C1
-    u1_r <- u1_r/(n*(n-1)*(n-2)/6.0 + t*r*(r-1)*(r-2)/6.0 + t*(n-r)*(n-r-1)*r/2.0 + t*(n-r)*r*(r-1)/2.0)
+    u1_r <- u1_r/(n*(n-1)*(n-2)/6.0 + t*r*(r-1)*(r-2)/6.0 
+                  + t*(n-r)*(n-r-1)*r/2.0 + t*(n-r)*r*(r-1)/2.0)
     
     u1 <- c(u1, u1_r)
     
@@ -735,7 +768,7 @@ temp <- data.frame(t, x_std, x_cv, x_skew)
 p1 <- trip_crash %>%
   ggplot(aes(x=t, y=accel_x)) +
   geom_line(size=0.7) + 
-  ggtitle("Longitudinal acceleration of crash sample") + theme_classic()+
+  ggtitle("Longitudinal acceleration of crash trip") + theme_classic()+
   theme(plot.title = element_text(size = 15, hjust = 0.5),
         axis.title.x=element_blank(),
         axis.title.y=element_blank())
@@ -771,12 +804,10 @@ p4 <- temp %>%
 grid.arrange(p1, p2, p3, p4, ncol = 1)
 
 
-
 ```
 
 
-
-
+The above figure shows the longitudinal acceleration of crash trip and online estimation for our proposed surrogates. From the figure, we find that our online estimates changes as accelerations change.
 
 ```{r message=FALSE, warning=FALSE}
 
@@ -789,7 +820,7 @@ temp <- data.frame(t, y_std, y_cv, y_skew)
 p1 <- trip_crash %>%
   ggplot(aes(x=t, y=accel_y)) +
   geom_line(size=0.7) + 
-  ggtitle("Lateral acceleration of crash sample") + theme_classic()+
+  ggtitle("Lateral acceleration of crash trip") + theme_classic()+
   theme(plot.title = element_text(size = 15, hjust = 0.5),
         axis.title.x=element_blank(),
         axis.title.y=element_blank())
@@ -827,6 +858,10 @@ grid.arrange(p1, p2, p3, p4, ncol = 1)
 
 
 
+## 4.3 Online risk prediction
+
+With the trained generalized addictive model and online surrogate estimates, we can predict the online risk for crash. We plot two trips with online risk in this section.
+These two trips come from crash and baseline separately. Both depict the online risk variation online the trip.
 
 
 ```{r message=FALSE, warning=FALSE}
@@ -880,7 +915,7 @@ grid.arrange(p1, p2, p3, ncol = 1)
 
 ```
 
-
+The above picture is online risk for crash samples. This online risk fluctuates as the change of lateral and longitudinal acceleration. In general, the risk is higher than 0.5, which indicates the high probability for crash.
 
 
 ```{r message=FALSE, warning=FALSE}
@@ -888,7 +923,7 @@ grid.arrange(p1, p2, p3, ncol = 1)
 dir_base <- "C:/Users/yzhang/Desktop/appliedstat/OnlineSurrogate/data/trip/base/"
 setwd(dir_base)
 f_base <- list.files(dir_base)
-trip_base <- ldply(f_base[19], read.csv, header=TRUE)
+trip_base <- ldply(f_base[17], read.csv, header=TRUE)
 
 
 ac_std_x <- online_std(trip_base$accel_x, 40, 100)
@@ -935,7 +970,20 @@ grid.arrange(p1, p2, p3, ncol = 1)
 
 ```
 
-## Reference
+The above picture is online risk for baseline samples. There is similar fluctuations for risk. In general, the risk becomes lower and lower as time goes by.
+
+# Conclusion
+
+In this project, we propose new surrogates for traffic safety analysis. 
+
+- Firstly, With a wide exploration of segments data for crash and baseline data. We  find that the accelerations in three dimensions reveal the driving behaviors, which means it can serve as features for prediction of risk. 
+
+- Secondly, we propose three new surrogates-standard deviation, coefficient of variation and skewness. Compared with the surrogates proposed previously, our surrogates have better performance in four prediction models (Logistic regression, generalized addictive model, support vector machine, gradient boosting decision tree). Among these prediction models, GAM works best.
+
+- Thirdly, we propose online estimation for surrogates. These online estimation varies as the accelerations change and provide online risk for crash as time goes by.
+
+
+# Reference
 
 [1] Feng Guo. Statistical methods for naturalistic driving studies. Annual review of statisticsand its application, 6:309–328, 2019.
 
