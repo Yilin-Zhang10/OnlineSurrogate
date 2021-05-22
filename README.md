@@ -26,7 +26,7 @@ Our core concern is to propose surrogates based on three-dimension of accelerati
 
 ## Project contents
 
-- Data
-- Report
-- Slides
-- Rmarkdown
+- [Data](https://github.com/codeandworld/OnlineSurrogate/tree/main/data)
+- [Report](https://github.com/codeandworld/OnlineSurrogate/blob/main/FinalReport.pdf)
+- [Slides](https://github.com/codeandworld/OnlineSurrogate/blob/main/slides/onlinetraffic.pdf)
+- [Rmarkdown](https://github.com/codeandworld/OnlineSurrogate/blob/main/code/OnlineSurrogate.Rmd)
