@@ -44,10 +44,13 @@ Our core concern is to propose surrogates based on three-dimension of accelerati
  
 # 2 Exploratory Data Analysis
 
-We first import data and combine them together.
+In this section, we do some exploratory data analysis. Our data includes **segments** and **trip** for both crash and baseline scenarios. We use segments as training data and trip data as testing.
 
-- Select 10 segments, with 5 crash ones and 5 non-crash ones. 
-- Each segments have around 300 time points.
+* Training Data: Each driving segment is about 200 time points,
+1000  baseline segments and 400 crash segments.
+
+* Testing Data: Each driving trip is about 2000 time points, 500 baseline trips and 200 crash trips.
+
 
 ```{r message=FALSE, warning=FALSE}
 
@@ -84,6 +87,12 @@ dataset <- bind_rows(data_base, data_crash)
 
 ## 2.1 Basic description for driving segments
 
+For general understanding of the segments, we plot 6 segments for both crash and baseline ones. From the two figures below, we can see that,
+
+- The accelerations in three dimensions for baseline segments are more stationary than the crash ones.
+- The accelerations in three dimensions for crash ones appear different patterns. This indicates the various cause of driving behaviors for crash.
+
+
 ```{r message=FALSE, warning=FALSE}
 # figure for baseline segments
 temp <- data_base %>% select(file_id, X, accel_x, accel_y, accel_z)
@@ -118,7 +127,7 @@ p
 ```
 
 
-Here, we give focus on some crash samples.
+For further analyze the driving behaviors for crash, we plot two figures for crash segments.
 
 ```{r message=FALSE, warning=FALSE}
 
@@ -140,9 +149,7 @@ p
 
 ```
 
-Mild crash:
-
-- Slam on the brakes and slow down to stop   
+The above figure depicts that The driver slamming on the brakes and crash into the object in the front of it.
  
 
 ```{r message=FALSE, warning=FALSE}
@@ -164,14 +171,12 @@ p <- temp %>%
 p
 ```
 
-Heavy crash:
+The above figure depicts that the driver slamming on the brakes and hitting the steering wheel.
 
-- Slam on the brakes 
-- No stop and straight collision
-- Hit the steering wheel
 
-## 2.2 Crash V.S. Non-Crash
+## 2.2 Crash V.S. baseline
 
+To further explore the difference between crash and baseline samples, we  plot the density and surrogates for different two cases.
 
 ```{r message=FALSE, warning=FALSE}
 
@@ -214,7 +219,7 @@ tripset <- bind_rows(trip_base, trip_crash)
 ```
 
 
-We plot the density for crash and non-crash data in three dimension and find
+We plot the density of acceleration for crash and non-crash data in three dimension and find
 
 - the rare event account for a small part but with extreme value
 - hard to distinguish crash and non-crash only from extreme value
@@ -252,7 +257,9 @@ p
 ```
 
 
+
 We consider a new surrogate, **standard deviation of acceleration**.
+
 ```{r message=FALSE, warning=FALSE}
 # figure for standard deviation
 temp <- dataset %>% 
